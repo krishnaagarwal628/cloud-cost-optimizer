@@ -1,6 +1,7 @@
 import typer
 from rich import print
 from src.auth import get_aws_session, verify_aws_credentials
+from src.utils import get_available_aws_regions
 
 app = typer.Typer(
     help="Cloud Infrastructure Auditor & Cost Optimizer CLI",
@@ -36,5 +37,16 @@ def scan():
     """Scan cloud resources (Placeholder for Week 2)."""
     print("[yellow]Scan command triggered. Scanner logic will be added in Week 2.[/yellow]")
 
+@app.command()
+def regions(
+    profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name")
+):
+    """List all available AWS regions for the configured account."""
+    print("[yellow]Fetching available AWS regions...[/yellow]")
+    session = get_aws_session(profile_name=profile)
+    region_list = get_available_aws_regions(session)
+    print(f"[bold green]✓ Active AWS Regions ({len(region_list)}):[/bold green]")
+    print(region_list)
+    
 if __name__ == "__main__":
     app()
