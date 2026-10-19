@@ -3,6 +3,9 @@ from rich import print
 from src.auth import get_aws_session, verify_aws_credentials
 from src.utils import get_available_aws_regions
 from src.scanners.ec2_scanner import EC2Scanner
+from rich import print
+from rich.table import Table
+
 
 app = typer.Typer(
     help="Cloud Infrastructure Auditor & Cost Optimizer CLI",
@@ -46,14 +49,31 @@ def scan(
     
     results = scanner.run_all_scans()
     
-    stopped = results["stopped_instances"]
-    unattached_ebs = results["unattached_ebs"]
-    unused_eips = results["unused_eips"]
+    all_findings = (
+        results["stopped_instances"] + 
+        results["unattached_ebs"] + 
+        results["unused_eips"]
+    )
     
-    print(f"\n[bold green]Scan Summary for {region}:[/bold green]")
-    print(f"• Stopped Instances: [bold cyan]{len(stopped)}[/bold cyan]")
-    print(f"• Unattached EBS Volumes: [bold cyan]{len(unattached_ebs)}[/bold cyan]")
-    print(f"• Unused Elastic IPs: [bold cyan]{len(unused_eips)}[/bold cyan]")
+    table = Table(title=f"Cloud Resource Audit Findings ({region})", show_header=True, header_style="bold magenta")
+    table.add_column("Type", style="cyan", width=18)
+    table.add_column("Resource ID / IP", style="bold white", width=22)
+    table.add_column("State", style="red", width=14)
+    table.add_column("Recommendation", style="yellow")
+
+    if all_findings:
+        for item in all_findings:
+            res_id = item.get("resource_id") or item.get("public_ip", "N/A")
+            table.add_row(
+                item.get("resource_type", "Unknown"),
+                res_id,
+                item.get("state", "N/A"),
+                item.get("recommendation", "N/A")
+            )
+        print(table)
+    else:
+        print(table)
+        print("\n[bold green]✓ No idle or underutilized EC2 resources detected![/bold green]")
 
 @app.command()
 def regions(
