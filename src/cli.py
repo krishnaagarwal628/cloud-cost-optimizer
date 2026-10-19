@@ -2,6 +2,7 @@ import typer
 from rich import print
 from src.auth import get_aws_session, verify_aws_credentials
 from src.utils import get_available_aws_regions
+from src.scanners.ec2_scanner import EC2Scanner
 
 app = typer.Typer(
     help="Cloud Infrastructure Auditor & Cost Optimizer CLI",
@@ -33,9 +34,26 @@ def auth_check(
         print(f"[red]Error:[/red] {auth_result['error']}")
 
 @app.command()
-def scan():
-    """Scan cloud resources (Placeholder for Week 2)."""
-    print("[yellow]Scan command triggered. Scanner logic will be added in Week 2.[/yellow]")
+def scan(
+    profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
+    region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region")
+):
+    """Scan EC2 instances, EBS volumes, and Elastic IPs for cost optimization."""
+    print(f"[bold yellow]Starting EC2 Resource Audit in region: {region}...[/bold yellow]")
+    
+    session = get_aws_session(profile_name=profile, region_name=region)
+    scanner = EC2Scanner(session=session, region_name=region)
+    
+    results = scanner.run_all_scans()
+    
+    stopped = results["stopped_instances"]
+    unattached_ebs = results["unattached_ebs"]
+    unused_eips = results["unused_eips"]
+    
+    print(f"\n[bold green]Scan Summary for {region}:[/bold green]")
+    print(f"• Stopped Instances: [bold cyan]{len(stopped)}[/bold cyan]")
+    print(f"• Unattached EBS Volumes: [bold cyan]{len(unattached_ebs)}[/bold cyan]")
+    print(f"• Unused Elastic IPs: [bold cyan]{len(unused_eips)}[/bold cyan]")
 
 @app.command()
 def regions(
