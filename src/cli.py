@@ -5,7 +5,7 @@ from src.utils import get_available_aws_regions
 from src.scanners.ec2_scanner import EC2Scanner
 from rich import print
 from rich.table import Table
-
+from src.scanners.s3_scanner import S3Scanner
 
 app = typer.Typer(
     help="Cloud Infrastructure Auditor & Cost Optimizer CLI",
@@ -41,24 +41,32 @@ def scan(
     profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
     region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region")
 ):
-    """Scan EC2 instances, EBS volumes, and Elastic IPs for cost optimization."""
-    print(f"[bold yellow]Starting EC2 Resource Audit in region: {region}...[/bold yellow]")
+    """Scan EC2 instances, EBS volumes, Elastic IPs, and S3 buckets for cost optimization."""
+    print(f"[bold yellow]Starting Resource Audit (EC2 & S3) in region: {region}...[/bold yellow]")
     
     session = get_aws_session(profile_name=profile, region_name=region)
-    scanner = EC2Scanner(session=session, region_name=region)
     
-    results = scanner.run_all_scans()
+    # Run EC2 Scans
+    ec2_scanner = EC2Scanner(session=session, region_name=region)
+    ec2_results = ec2_scanner.run_all_scans()
     
+    # Run S3 Scans
+    s3_scanner = S3Scanner(session=session)
+    s3_results = s3_scanner.run_all_scans()
+    
+    # Combine Findings
     all_findings = (
-        results["stopped_instances"] + 
-        results["unattached_ebs"] + 
-        results["unused_eips"]
+        ec2_results["stopped_instances"] + 
+        ec2_results["unattached_ebs"] + 
+        ec2_results["unused_eips"] +
+        s3_results["empty_buckets"] +
+        s3_results["missing_lifecycle"]
     )
     
     table = Table(title=f"Cloud Resource Audit Findings ({region})", show_header=True, header_style="bold magenta")
     table.add_column("Type", style="cyan", width=18)
-    table.add_column("Resource ID / IP", style="bold white", width=22)
-    table.add_column("State", style="red", width=14)
+    table.add_column("Resource ID / IP", style="bold white", width=25)
+    table.add_column("State", style="red", width=20)
     table.add_column("Recommendation", style="yellow")
 
     if all_findings:
@@ -73,7 +81,7 @@ def scan(
         print(table)
     else:
         print(table)
-        print("\n[bold green]✓ No idle or underutilized EC2 resources detected![/bold green]")
+        print("\n[bold green]✓ No idle or underutilized cloud resources detected![/bold green]")
 
 @app.command()
 def regions(
