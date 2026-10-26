@@ -6,6 +6,7 @@ from src.scanners.ec2_scanner import EC2Scanner
 from rich import print
 from rich.table import Table
 from src.scanners.s3_scanner import S3Scanner
+from src.scanners.rds_scanner import RDSScanner
 
 app = typer.Typer(
     help="Cloud Infrastructure Auditor & Cost Optimizer CLI",
@@ -41,8 +42,8 @@ def scan(
     profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
     region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region")
 ):
-    """Scan EC2 instances, EBS volumes, Elastic IPs, and S3 buckets for cost optimization."""
-    print(f"[bold yellow]Starting Resource Audit (EC2 & S3) in region: {region}...[/bold yellow]")
+    """Scan EC2 instances, EBS volumes, Elastic IPs, S3 buckets, and RDS databases for cost optimization."""
+    print(f"[bold yellow]Starting Complete Resource Audit (EC2, S3 & RDS) in region: {region}...[/bold yellow]")
     
     session = get_aws_session(profile_name=profile, region_name=region)
     
@@ -54,13 +55,19 @@ def scan(
     s3_scanner = S3Scanner(session=session)
     s3_results = s3_scanner.run_all_scans()
     
-    # Combine Findings
+    # Run RDS Scans
+    rds_scanner = RDSScanner(session=session, region_name=region)
+    rds_results = rds_scanner.run_all_scans()
+    
+    # Combine All Findings
     all_findings = (
         ec2_results["stopped_instances"] + 
         ec2_results["unattached_ebs"] + 
         ec2_results["unused_eips"] +
         s3_results["empty_buckets"] +
-        s3_results["missing_lifecycle"]
+        s3_results["missing_lifecycle"] +
+        rds_results["stopped_instances"] +
+        rds_results["manual_snapshots"]
     )
     
     table = Table(title=f"Cloud Resource Audit Findings ({region})", show_header=True, header_style="bold magenta")
@@ -82,8 +89,6 @@ def scan(
     else:
         print(table)
         print("\n[bold green]✓ No idle or underutilized cloud resources detected![/bold green]")
-
-@app.command()
 def regions(
     profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name")
 ):
