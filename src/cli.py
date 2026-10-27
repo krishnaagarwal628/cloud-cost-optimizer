@@ -8,6 +8,8 @@ from src.scanners.ec2_scanner import EC2Scanner
 from src.scanners.s3_scanner import S3Scanner
 from src.scanners.rds_scanner import RDSScanner
 from src.cost_estimator import CostEstimator
+from src.exporter import ReportExporter
+
 
 app = typer.Typer(
     name="cloud-cost-optimizer",
@@ -54,9 +56,10 @@ def regions(
 @app.command()
 def scan(
     profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
-    region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region")
+    region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region"),
+    output: str = typer.Option(None, "--output", "-o", help="Output file path (.json or .csv)")
 ):
-    """Scan AWS resources (EC2, S3, RDS) and estimate potential monthly savings."""
+    """Scan AWS resources (EC2, S3, RDS), estimate waste, and export reports."""
     print(f"[bold yellow]Starting Complete Resource Audit (EC2, S3 & RDS) in region: {region}...[/bold yellow]")
     
     session = get_aws_session(profile_name=profile, region_name=region)
@@ -80,7 +83,7 @@ def scan(
     # Calculate Cost Estimates & Enrich Findings
     all_findings, total_savings = CostEstimator.calculate_total_savings(raw_findings)
     
-    # Build Table
+    # Build Table Display
     table = Table(title=f"Cloud Resource Audit Findings ({region})", show_header=True, header_style="bold magenta")
     table.add_column("Type", style="cyan", width=16)
     table.add_column("Resource ID / IP", style="bold white", width=22)
@@ -104,6 +107,13 @@ def scan(
         print(table)
         print("\n[bold green]✓ No idle or underutilized cloud resources detected![/bold green]")
 
-
+    # Export Report if --output (-o) flag is passed
+    if output:
+        if output.endswith(".json"):
+            ReportExporter.export_to_json(all_findings, output)
+        elif output.endswith(".csv"):
+            ReportExporter.export_to_csv(all_findings, output)
+        else:
+            print("[bold red]✗ Unsupported file format. Please use .json or .csv extension.[/bold red]")
 if __name__ == "__main__":
     app()
