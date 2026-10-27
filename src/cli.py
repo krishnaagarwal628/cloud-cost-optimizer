@@ -54,13 +54,14 @@ def regions(
 
 
 @app.command()
+@app.command()
 def scan(
     profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
     region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region"),
     output: str = typer.Option(None, "--output", "-o", help="Output file path (.json or .csv)")
 ):
     """Scan AWS resources (EC2, S3, RDS), estimate waste, and export reports."""
-    print(f"[bold yellow]Starting Complete Resource Audit (EC2, S3 & RDS) in region: {region}...[/bold yellow]")
+    print(f"[bold yellow]Starting Complete Resource Audit (EC2, CloudWatch, S3 & RDS) in region: {region}...[/bold yellow]")
     
     session = get_aws_session(profile_name=profile, region_name=region)
     
@@ -69,9 +70,10 @@ def scan(
     s3_results = S3Scanner(session=session).run_all_scans()
     rds_results = RDSScanner(session=session, region_name=region).run_all_scans()
     
-    # Combine All Findings
+    # Combine All Findings (including CloudWatch low-CPU instances)
     raw_findings = (
         ec2_results["stopped_instances"] + 
+        ec2_results["low_cpu_instances"] +
         ec2_results["unattached_ebs"] + 
         ec2_results["unused_eips"] +
         s3_results["empty_buckets"] +
