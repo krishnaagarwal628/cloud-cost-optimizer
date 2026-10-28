@@ -9,6 +9,7 @@ from src.scanners.s3_scanner import S3Scanner
 from src.scanners.rds_scanner import RDSScanner
 from src.cost_estimator import CostEstimator
 from src.exporter import ReportExporter
+from src.scanners.multi_region import MultiRegionScanner
 
 
 app = typer.Typer(
@@ -54,39 +55,40 @@ def regions(
 
 
 @app.command()
-@app.command()
 def scan(
     profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
     region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region"),
+    all_regions: bool = typer.Option(False, "--all-regions", "-a", help="Scan all active AWS regions in parallel"),
     output: str = typer.Option(None, "--output", "-o", help="Output file path (.json or .csv)")
 ):
-    """Scan AWS resources (EC2, S3, RDS), estimate waste, and export reports."""
-    print(f"[bold yellow]Starting Complete Resource Audit (EC2, CloudWatch, S3 & RDS) in region: {region}...[/bold yellow]")
-    
+    """Scan AWS resources (EC2, CloudWatch, S3, RDS), estimate waste, and export reports."""
     session = get_aws_session(profile_name=profile, region_name=region)
     
-    # Run Scans
-    ec2_results = EC2Scanner(session=session, region_name=region).run_all_scans()
-    s3_results = S3Scanner(session=session).run_all_scans()
-    rds_results = RDSScanner(session=session, region_name=region).run_all_scans()
-    
-    # Combine All Findings (including CloudWatch low-CPU instances)
-    raw_findings = (
-        ec2_results["stopped_instances"] + 
-        ec2_results["low_cpu_instances"] +
-        ec2_results["unattached_ebs"] + 
-        ec2_results["unused_eips"] +
-        s3_results["empty_buckets"] +
-        s3_results["missing_lifecycle"] +
-        rds_results["stopped_instances"] +
-        rds_results["manual_snapshots"]
-    )
+    if all_regions:
+        raw_findings = MultiRegionScanner(session=session).scan_all_regions()
+    else:
+        print(f"[bold yellow]Starting Complete Resource Audit in region: {region}...[/bold yellow]")
+        ec2_results = EC2Scanner(session=session, region_name=region).run_all_scans()
+        s3_results = S3Scanner(session=session).run_all_scans()
+        rds_results = RDSScanner(session=session, region_name=region).run_all_scans()
+        
+        raw_findings = (
+            ec2_results["stopped_instances"] + 
+            ec2_results["low_cpu_instances"] +
+            ec2_results["unattached_ebs"] + 
+            ec2_results["unused_eips"] +
+            s3_results["empty_buckets"] +
+            s3_results["missing_lifecycle"] +
+            rds_results["stopped_instances"] +
+            rds_results["manual_snapshots"]
+        )
     
     # Calculate Cost Estimates & Enrich Findings
     all_findings, total_savings = CostEstimator.calculate_total_savings(raw_findings)
     
     # Build Table Display
-    table = Table(title=f"Cloud Resource Audit Findings ({region})", show_header=True, header_style="bold magenta")
+    title = "Multi-Region Audit Findings" if all_regions else f"Cloud Resource Audit Findings ({region})"
+    table = Table(title=title, show_header=True, header_style="bold magenta")
     table.add_column("Type", style="cyan", width=16)
     table.add_column("Resource ID / IP", style="bold white", width=22)
     table.add_column("State", style="red", width=18)
