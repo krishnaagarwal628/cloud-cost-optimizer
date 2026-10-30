@@ -10,6 +10,7 @@ from src.scanners.rds_scanner import RDSScanner
 from src.cost_estimator import CostEstimator
 from src.exporter import ReportExporter
 from src.scanners.multi_region import MultiRegionScanner
+from src.remediation import RemediationEngine
 
 
 app = typer.Typer(
@@ -119,5 +120,50 @@ def scan(
             ReportExporter.export_to_csv(all_findings, output)
         else:
             print("[bold red]✗ Unsupported file format. Please use .json or .csv extension.[/bold red]")
+
+
+@app.command()
+def clean(
+    profile: str = typer.Option(None, "--profile", "-p", help="AWS profile name"),
+    region: str = typer.Option("us-east-1", "--region", "-r", help="AWS region"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Run in dry-run mode without modifying resources"),
+    confirm: bool = typer.Option(False, "--yes", "-y", help="Skip interactive confirmation prompts")
+):
+    """Clean up detected idle and underutilized AWS resources safely."""
+    mode_str = "[bold cyan]DRY-RUN MODE[/bold cyan]" if dry_run else "[bold red]LIVE REMEDIATION MODE[/bold red]"
+    print(f"Starting Resource Remediation in {region} ({mode_str})...")
+
+    session = get_aws_session(profile_name=profile, region_name=region)
+    remediator = RemediationEngine(session=session, region_name=region, dry_run=dry_run)
+
+    # Fetch current findings
+    ec2_scanner = EC2Scanner(session=session, region_name=region)
+    ec2_results = ec2_scanner.run_all_scans()
+
+    stopped_instances = ec2_results["stopped_instances"]
+    unattached_ebs = ec2_results["unattached_ebs"]
+    unused_eips = ec2_results["unused_eips"]
+
+    total_targets = len(stopped_instances) + len(unattached_ebs) + len(unused_eips)
+    if total_targets == 0:
+        print("[bold green]✓ No cleanup actions needed. All resources active/in-use.[/bold green]")
+        return
+
+    # User confirmation check for live execution
+    if not dry_run and not confirm:
+        sure = typer.confirm(f"Are you sure you want to modify/delete {total_targets} resources in {region}?")
+        if not sure:
+            print("[yellow]Remediation cancelled by user.[/yellow]")
+            return
+
+    # Execute Remediation Steps
+    for inst in stopped_instances:
+        remediator.stop_ec2_instance(inst["resource_id"])
+
+    for ebs in unattached_ebs:
+        remediator.delete_unattached_ebs(ebs["resource_id"])
+
+    for eip in unused_eips:
+        remediator.release_unused_eip(eip["resource_id"])
 if __name__ == "__main__":
     app()
