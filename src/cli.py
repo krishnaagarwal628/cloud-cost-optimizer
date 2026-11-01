@@ -118,8 +118,10 @@ def scan(
             ReportExporter.export_to_json(all_findings, output)
         elif output.endswith(".csv"):
             ReportExporter.export_to_csv(all_findings, output)
+        elif output.endswith(".html"):
+            ReportExporter.export_to_html(all_findings, total_savings, output)
         else:
-            print("[bold red]✗ Unsupported file format. Please use .json or .csv extension.[/bold red]")
+            print("[bold red]✗ Unsupported file format. Please use .json, .csv, or .html extension.[/bold red]")
 
 
 @app.command()
